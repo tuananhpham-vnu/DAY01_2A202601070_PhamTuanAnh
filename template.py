@@ -142,7 +142,12 @@ def call_openai_mini(
 # ---------------------------------------------------------------------------
 # Task 1.3 — So sánh GPT-4o vs GPT-4o-mini
 # ---------------------------------------------------------------------------
-def compare_models(prompt: str) -> dict:
+def compare_models(
+    prompt: str,
+    temperature: float = 0.7,
+    top_p: float = 0.9,
+    max_tokens: int = 256,
+) -> dict:
     """
     Gọi cả hai model với cùng một prompt và trả về dict so sánh.
 
@@ -160,8 +165,18 @@ def compare_models(prompt: str) -> dict:
         (0.75 từ ≈ 1 token — ước lượng thô; Part 2 sẽ tính chính xác hơn)
     """
     # TODO: gọi call_openai và call_openai_mini, ghép dict kết quả
-    gpt4o_response, gpt4o_latency = call_openai(prompt,)
-    mini_response, mini_latency = call_openai_mini(prompt)
+    gpt4o_response, gpt4o_latency = call_openai(
+        prompt,
+        temperature=temperature,
+        top_p=top_p,
+        max_tokens=max_tokens,
+    )
+    mini_response, mini_latency = call_openai_mini(
+        prompt,
+        temperature=temperature,
+        top_p=top_p,
+        max_tokens=max_tokens,
+    )
     
     gpt4o_cost_estimate = (
         (len(gpt4o_response.split()) / 0.75)
@@ -190,6 +205,7 @@ def chat_with_system_prompt(
     user_prompt: str,
     model: str = OPENAI_MODEL,
     temperature: float = 0.7,
+    top_p: float = 0.9,
     max_tokens: int = 256,
 ) -> tuple[str, float]:
     """
@@ -227,6 +243,7 @@ def chat_with_system_prompt(
     }
     if not model.startswith("gemini-3."):
         request_kwargs["temperature"] = temperature
+        request_kwargs["top_p"] = top_p
 
     start_time = time.perf_counter()
     try:

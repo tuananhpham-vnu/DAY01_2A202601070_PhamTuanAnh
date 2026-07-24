@@ -176,6 +176,21 @@ HTML = r"""<!doctype html>
       margin-top: 14px;
     }
 
+    .param-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-top: 10px;
+    }
+
+    .param-grid label {
+      margin-top: 0;
+    }
+
+    .param-grid input {
+      min-height: 38px;
+    }
+
     button.primary {
       background: var(--accent);
       border: 1px solid var(--accent);
@@ -280,6 +295,20 @@ HTML = r"""<!doctype html>
           <textarea id="systemPrompt" rows="5">Bạn là trợ lý học tập AI thân thiện, trả lời bằng tiếng Việt rõ ràng và ngắn gọn.</textarea>
           <label for="userPrompt">User prompt</label>
           <textarea id="userPrompt" rows="5">Giải thích machine learning là gì?</textarea>
+          <div class="param-grid">
+            <div>
+              <label for="chatTemperature">Temperature</label>
+              <input id="chatTemperature" type="number" min="0" max="2" step="0.1" value="0.7">
+            </div>
+            <div>
+              <label for="chatTopP">Top-p</label>
+              <input id="chatTopP" type="number" min="0" max="1" step="0.05" value="0.9">
+            </div>
+            <div>
+              <label for="chatMaxTokens">Max tokens</label>
+              <input id="chatMaxTokens" type="number" min="1" step="1" value="256">
+            </div>
+          </div>
           <div class="actions">
             <button class="primary" id="chatRun" type="button">Run Chat</button>
             <span class="hint">Calls chat_with_system_prompt()</span>
@@ -303,6 +332,20 @@ HTML = r"""<!doctype html>
           <h2>Compare Models</h2>
           <label for="comparePrompt">Prompt</label>
           <textarea id="comparePrompt" rows="7">Việt Nam có bao nhiêu tỉnh?</textarea>
+          <div class="param-grid">
+            <div>
+              <label for="compareTemperature">Temperature</label>
+              <input id="compareTemperature" type="number" min="0" max="2" step="0.1" value="0.7">
+            </div>
+            <div>
+              <label for="compareTopP">Top-p</label>
+              <input id="compareTopP" type="number" min="0" max="1" step="0.05" value="0.9">
+            </div>
+            <div>
+              <label for="compareMaxTokens">Max tokens</label>
+              <input id="compareMaxTokens" type="number" min="1" step="1" value="256">
+            </div>
+          </div>
           <div class="actions">
             <button class="primary" id="compareRun" type="button">Run Compare</button>
             <span class="hint">Calls compare_models()</span>
@@ -382,6 +425,16 @@ Kể một sự thật thú vị về Hà Nội.</textarea>
       node.classList.toggle("show", Boolean(message));
     }
 
+    function readFloat(id, fallback) {
+      const value = parseFloat($(id).value);
+      return Number.isFinite(value) ? value : fallback;
+    }
+
+    function readInt(id, fallback) {
+      const value = parseInt($(id).value, 10);
+      return Number.isFinite(value) ? value : fallback;
+    }
+
     $("chatRun").addEventListener("click", async () => {
       const button = $("chatRun");
       setBusy(button, true, "Run Chat");
@@ -391,6 +444,9 @@ Kể một sự thật thú vị về Hà Nội.</textarea>
         const data = await postJson("/api/chat", {
           system_prompt: $("systemPrompt").value,
           user_prompt: $("userPrompt").value,
+          temperature: readFloat("chatTemperature", 0.7),
+          top_p: readFloat("chatTopP", 0.9),
+          max_tokens: readInt("chatMaxTokens", 256),
         });
         $("chatLatency").textContent = `${data.latency_seconds.toFixed(3)}s`;
         $("chatOutput").textContent = data.response_text;
@@ -408,7 +464,12 @@ Kể một sự thật thú vị về Hà Nội.</textarea>
       setBusy(button, true, "Run Compare");
       showError("compareError", "");
       try {
-        const data = await postJson("/api/compare", { prompt: $("comparePrompt").value });
+        const data = await postJson("/api/compare", {
+          prompt: $("comparePrompt").value,
+          temperature: readFloat("compareTemperature", 0.7),
+          top_p: readFloat("compareTopP", 0.9),
+          max_tokens: readInt("compareMaxTokens", 256),
+        });
         const result = data.result;
         $("primaryLatency").textContent = `${result.gpt4o_latency.toFixed(3)}s`;
         $("miniLatency").textContent = `${result.mini_latency.toFixed(3)}s`;
@@ -494,6 +555,22 @@ def mock_compare_result(prompt: str) -> dict[str, Any]:
     }
 
 
+def _read_float(payload: dict[str, Any], key: str, default: float) -> float:
+    try:
+        value = float(payload.get(key, default))
+    except (TypeError, ValueError):
+        return default
+    return value
+
+
+def _read_int(payload: dict[str, Any], key: str, default: int) -> int:
+    try:
+        value = int(payload.get(key, default))
+    except (TypeError, ValueError):
+        return default
+    return value
+
+
 class LabRequestHandler(BaseHTTPRequestHandler):
     server_version = "LabLLMWeb/1.0"
 
@@ -546,9 +623,13 @@ class LabRequestHandler(BaseHTTPRequestHandler):
     def handle_chat(self, payload: dict[str, Any]) -> None:
         system_prompt = str(payload.get("system_prompt", "")).strip()
         user_prompt = str(payload.get("user_prompt", "")).strip()
+        temperature = _read_float(payload, "temperature", 0.7)
+        top_p = _read_float(payload, "top_p", 0.9)
+        max_tokens = _read_int(payload, "max_tokens", 256)
         log_event(
             f"handle_chat: system_prompt={len(system_prompt)} chars, "
-            f"user_prompt={len(user_prompt)} chars"
+            f"user_prompt={len(user_prompt)} chars, "
+            f"temperature={temperature}, top_p={top_p}, max_tokens={max_tokens}"
         )
         if not system_prompt or not user_prompt:
             self.send_json(
@@ -562,6 +643,9 @@ class LabRequestHandler(BaseHTTPRequestHandler):
             response_text, latency_seconds = template.chat_with_system_prompt(
                 system_prompt,
                 user_prompt,
+                temperature=temperature,
+                top_p=top_p,
+                max_tokens=max_tokens,
             )
             source = "real"
             log_event(f"Chat succeeded in {latency_seconds:.3f}s")
@@ -581,6 +665,9 @@ class LabRequestHandler(BaseHTTPRequestHandler):
 
     def handle_compare(self, payload: dict[str, Any]) -> None:
         prompt = str(payload.get("prompt", "")).strip()
+        temperature = _read_float(payload, "temperature", 0.7)
+        top_p = _read_float(payload, "top_p", 0.9)
+        max_tokens = _read_int(payload, "max_tokens", 256)
         log_event(f"handle_compare: prompt={len(prompt)} chars")
         if not prompt:
             self.send_json({"error": "prompt is required"}, HTTPStatus.BAD_REQUEST)
@@ -588,7 +675,12 @@ class LabRequestHandler(BaseHTTPRequestHandler):
 
         try:
             log_event("Calling template.compare_models()")
-            result = template.compare_models(prompt)
+            result = template.compare_models(
+                prompt,
+                temperature=temperature,
+                top_p=top_p,
+                max_tokens=max_tokens,
+            )
             result["source"] = "real"
             log_event("Compare succeeded")
         except Exception as exc:

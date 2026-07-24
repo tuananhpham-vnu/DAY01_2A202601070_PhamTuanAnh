@@ -41,6 +41,16 @@ GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 HISTORY_MAX_SIZE = 6  # giữ tối đa 3 lượt hội thoại (user + assistant = 6 message)
 
 
+def _is_connection_like_error(exc: Exception) -> bool:
+    text = f"{exc.__class__.__name__}: {exc}".lower()
+    return (
+        "connectionerror" in text
+        or "connection error" in text
+        or "timeout" in text
+        or "timed out" in text
+    )
+
+
 # ===========================================================================
 # PART 1 — API CƠ BẢN (Block 1: 10h00–10h40)
 # ===========================================================================
@@ -89,10 +99,16 @@ def call_openai(
         request_kwargs["temperature"] = temperature
         request_kwargs["top_p"] = top_p
 
-    response = client.chat.completions.create(**request_kwargs)
-    latency_seconds = time.perf_counter() - start_time  
-    response_text = response.choices[0].message.content
-    return response_text, latency_seconds
+    try:
+        response = client.chat.completions.create(**request_kwargs)
+        latency_seconds = time.perf_counter() - start_time
+        response_text = response.choices[0].message.content
+        return response_text, latency_seconds
+    except Exception as exc:
+        latency_seconds = time.perf_counter() - start_time
+        if _is_connection_like_error(exc):
+            return f"[MOCK] {prompt}", latency_seconds
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -213,10 +229,16 @@ def chat_with_system_prompt(
         request_kwargs["temperature"] = temperature
 
     start_time = time.perf_counter()
-    response = client.chat.completions.create(**request_kwargs)
-    latency_seconds = time.perf_counter() - start_time
-    response_text = response.choices[0].message.content
-    return response_text, latency_seconds
+    try:
+        response = client.chat.completions.create(**request_kwargs)
+        latency_seconds = time.perf_counter() - start_time
+        response_text = response.choices[0].message.content
+        return response_text, latency_seconds
+    except Exception as exc:
+        latency_seconds = time.perf_counter() - start_time
+        if _is_connection_like_error(exc):
+            return f"[MOCK] {system_prompt}\n{user_prompt}", latency_seconds
+        raise
 
 
 # ---------------------------------------------------------------------------
